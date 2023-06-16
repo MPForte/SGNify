@@ -1,12 +1,17 @@
 dataset: 'openpose'
-joints_to_ign:
-    - 1
-    - 9
-    - 12
+joints_to_ign: 
+    - 1 # added later
+joints_to_increase: 
+#    - 3
+#    - 6
+    - 2 # added later
+    - 5 # added later
+    - 4
+    - 7
 data_folder: "data"
 output_folder: 'smplx_debug'
 prior_folder: 'priors'
-model_folder: 'models'
+model_folder: 'data/models'
 result_folder: 'results'
 gender: "neutral"
 model_type: 'smplx'
@@ -36,13 +41,13 @@ ign_part_pairs: ["9,16", "9,17", "6,16", "6,17", "1,2", "12,22"]
 penalize_outside: True
 max_collisions: 128
 # LBFGS with line search
-optim_type: 'lbfgsls'
-ftol: 1e-9
+optim_type: 'trustncg' 
+ftol: -1.0
 gtol: 1e-9
 lr: 1.0
 # Max number of optimization iterations
 maxiters: 30
-interactive: True
+interactive: False
 visualize: False
 # Relative change in loss value
 body_pose_prior_weights:
@@ -51,12 +56,6 @@ body_pose_prior_weights:
     - 57.4e0
     - 4.78e0
     - 4.78e0
-coll_loss_weights:
-    - 0.0
-    - 0.0
-    - 0.0
-    - 0.01
-    - 1.0
 shape_weights:
     - 1.0e2
     - 5.0e1
@@ -90,14 +89,30 @@ hand_joints_weights:
     - 0.0
     - 0.0
     - 0.0
-    - 0.1
-    - 2.0
+    - 0.2
+    - 4.0 
 face_joints_weights:
     - 0.0
     - 0.0
     - 0.0
     - 0.0
-    - 2.0
-
+    - 2.0 
 use_vposer: True
-vposer_ckpt: "vposer"
+vposer_ckpt: "data/vposer_v1_0"
+boneorientation_loss: True
+init_joints_idxs: [9, 12, 2, 5, 8, 1]
+body_boneorientation_pairs: ["1,8", "2,3", "3,4", "5,6", "6,7"]
+hand_boneorientation_pairs: ["0,1", "0,5", "0,9", "0,13", "0,17", "1,2","5,6","9,10","13,14","17,18","2,3","6,7","10,11","14,15","18,19","3,4","7,8","11,12","15,16","19,20"]
+loss_type: sgnify
+symmetry_weight: 3.0e2 #1e3 
+body_temp_smooth_weight: 3.5e2 # 2.5e2
+hand_temp_smooth_weight: 1.0e1 #1.0e1
+coll_loss_weight: 5.0e2
+start_opt_stage: 2
+scopti_weights:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 1000 #500.0
+camera_type: persp

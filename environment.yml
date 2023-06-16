@@ -1,0 +1,39 @@
+name: sgnify
+channels:
+  - pytorch
+  - conda-forge
+  - nvidia
+dependencies:
+  - python==3.10.*
+  - pip
+  - git
+  - configargparse
+  - einops
+  - fastai::opencv-python-headless
+  - gdown
+  - kornia
+  - loguru
+  - numpy
+  - omegaconf
+  - openh264
+  - pyrender==0.1.23
+  - pytorch
+  - pytorch-cuda
+  - pytorch3d::pytorch3d
+  - scikit-learn
+  - torchvision
+  - tqdm
+  - trimesh
+  - yacs
+  - pip:
+    - -e ./spectre/external/face_alignment
+    - -e ./spectre/external/face_detection
+    - git+https://github.com/muelea/selfcontact
+    - git+https://github.com/nghorbani/ViTPose
+    - human-body-prior
+    - importlib-resources
+    - mediapipe
+    - smplx
+    - ultralytics
+    - python-ffmpeg
+    - networkx==2.5.1

@@ -1,0 +1,3 @@
+[submodule "spectre"]
+	path = spectre
+	url = https://github.com/filby89/spectre

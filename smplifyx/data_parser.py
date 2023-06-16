@@ -33,11 +33,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-
 from utils import smpl_to_openpose
 
 Keypoints = namedtuple('Keypoints',
-                       ['keypoints', 'gender_gt', 'gender_pd'])
+                       ['keypoints', 'gender_gt', 'gender_pd', 'pelvis', 'neck', 'keypoints_3d'])
 
 Keypoints.__new__.__defaults__ = (None,) * len(Keypoints._fields)
 
@@ -58,6 +57,10 @@ def read_keypoints(keypoint_fn, use_hands=True, use_face=True,
 
     gender_pd = []
     gender_gt = []
+    midhip = []
+    neck = []
+    pose_keypoints_3d = []
+
     for idx, person_data in enumerate(data['people']):
         body_keypoints = np.array(person_data['pose_keypoints_2d'],
                                   dtype=np.float32)
@@ -96,8 +99,22 @@ def read_keypoints(keypoint_fn, use_hands=True, use_face=True,
 
         keypoints.append(body_keypoints)
 
+        if person_data['pose_keypoints_3d']:
+            midhip.append(person_data['pose_keypoints_3d'][4 * 8 + 0:4 * 8 + 3])
+            neck.append(person_data['pose_keypoints_3d'][4 * 1 + 0:4 * 1 + 3])
+            pose_keypoints_3d.append(person_data['pose_keypoints_3d'])
+            # add 3D hands keypoints
+            if use_hands:
+                pose_keypoints_3d[0] = np.concatenate([pose_keypoints_3d[0],
+                                                person_data['hand_left_keypoints_3d'],
+                                                person_data['hand_right_keypoints_3d']])
+        else:
+            midhip.append(person_data['pose_keypoints_2d'][3 * 8 + 0:3 * 8 + 2])
+            neck.append(person_data['pose_keypoints_2d'][3 * 1 + 0:3 * 1 + 2])
+
     return Keypoints(keypoints=keypoints, gender_pd=gender_pd,
-                     gender_gt=gender_gt)
+                     gender_gt=gender_gt, pelvis=midhip, neck=neck,
+                     keypoints_3d=pose_keypoints_3d)
 
 
 class OpenPose(Dataset):
@@ -112,6 +129,7 @@ class OpenPose(Dataset):
                  dtype=torch.float32,
                  model_type='smplx',
                  joints_to_ign=None,
+                 joints_to_increase=None,
                  use_face_contour=False,
                  openpose_format='coco25',
                  **kwargs):
@@ -122,6 +140,7 @@ class OpenPose(Dataset):
         self.model_type = model_type
         self.dtype = dtype
         self.joints_to_ign = joints_to_ign
+        self.joints_to_increase = joints_to_increase
         self.use_face_contour = use_face_contour
 
         self.openpose_format = openpose_format
@@ -135,7 +154,8 @@ class OpenPose(Dataset):
         self.img_paths = [osp.join(self.img_folder, img_fn)
                           for img_fn in os.listdir(self.img_folder)
                           if img_fn.endswith('.png') or
-                          img_fn.endswith('.jpg') and
+                          img_fn.endswith('.jpg') or
+                          img_fn.endswith('.bmp') and
                           not img_fn.startswith('.')]
         self.img_paths = sorted(self.img_paths)
         self.cnt = 0
@@ -159,6 +179,8 @@ class OpenPose(Dataset):
                                 17 * self.use_face_contour,
                                 dtype=np.float32)
 
+        if self.joints_to_increase is not None and -1 not in self.joints_to_increase:
+            optim_weights[self.joints_to_increase] = 3.
         # Neck, Left and right hip
         # These joints are ignored because SMPL has no neck joint and the
         # annotation of the hips is ambiguous.
@@ -190,7 +212,9 @@ class OpenPose(Dataset):
 
         output_dict = {'fn': img_fn,
                        'img_path': img_path,
-                       'keypoints': keypoints, 'img': img}
+                       'keypoints': keypoints, 'img': img,
+                       'pelvis': keyp_tuple.pelvis, 'neck': keyp_tuple.neck,
+                       'keypoints_3d': keyp_tuple.keypoints_3d}
         if keyp_tuple.gender_gt is not None:
             if len(keyp_tuple.gender_gt) > 0:
                 output_dict['gender_gt'] = keyp_tuple.gender_gt

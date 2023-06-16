@@ -31,6 +31,7 @@ import torch.nn as nn
 
 from mesh_viewer import MeshViewer
 import utils
+from selfcontact.losses import SelfContactLoss
 
 
 @torch.no_grad()
@@ -271,17 +272,68 @@ class FittingMonitor(object):
 
 def create_loss(loss_type='smplify', **kwargs):
     if loss_type == 'smplify':
-        return SMPLifyLoss(**kwargs)
+        return SMPLifyLoss(loss_type, **kwargs)
     elif loss_type == 'camera_init':
         return SMPLifyCameraInitLoss(**kwargs)
+    elif loss_type == 'temp_smplify':
+        return TemporalSMPLifyLoss(loss_type, **kwargs)
+    elif loss_type == 'sgnify':
+        return SGNifyLoss(loss_type, **kwargs)
     else:
         raise ValueError('Unknown loss type: {}'.format(loss_type))
 
 
+def L2Loss(pose_curr, pose_ref, size, smooth_weight):
+    quat_pose_curr = axis_angle_to_rotation_6d(torch.reshape(pose_curr, size))
+    quat_pose_ref = axis_angle_to_rotation_6d(torch.reshape(pose_ref, size))
+    loss = (torch.sum((quat_pose_curr - quat_pose_ref) ** 2) * smooth_weight ** 2)
+    return loss
+
+
+def axis_angle_to_rotation_6d(axis_angle: torch.Tensor) -> torch.Tensor:
+    # https://github.com/facebookresearch/pytorch3d/blob/main/pytorch3d/transforms/rotation_conversions.py
+    angles = torch.norm(axis_angle, p=2, dim=-1, keepdim=True)
+    half_angles = angles * 0.5
+    eps = 1e-6
+    small_angles = angles.abs() < eps
+    sin_half_angles_over_angles = torch.empty_like(angles)
+    sin_half_angles_over_angles[~small_angles] = (
+        torch.sin(half_angles[~small_angles]) / angles[~small_angles]
+    )
+    sin_half_angles_over_angles[small_angles] = (
+        0.5 - (angles[small_angles] * angles[small_angles]) / 48
+    )
+    quaternions = torch.cat(
+        [torch.cos(half_angles), axis_angle * sin_half_angles_over_angles], dim=-1
+    )
+
+    r, i, j, k = torch.unbind(quaternions, -1)
+    two_s = 2.0 / (quaternions * quaternions).sum(-1)
+
+    o = torch.stack(
+        (
+            1 - two_s * (j * j + k * k),
+            two_s * (i * j - k * r),
+            two_s * (i * k + j * r),
+            two_s * (i * j + k * r),
+            1 - two_s * (i * i + k * k),
+            two_s * (j * k - i * r),
+            two_s * (i * k - j * r),
+            two_s * (j * k + i * r),
+            1 - two_s * (i * i + j * j),
+        ),
+        -1,
+    )
+    matrix = o.reshape(quaternions.shape[:-1] + (3, 3))
+
+    batch_dim = matrix.size()[:-2]
+    return matrix[..., :2, :].clone().reshape(batch_dim + (6,))
+
+
 class SMPLifyLoss(nn.Module):
 
-    def __init__(self, search_tree=None,
-                 pen_distance=None, tri_filtering_module=None,
+    def __init__(self,
+                 loss_type=None,
                  rho=100,
                  body_pose_prior=None,
                  shape_prior=None,
@@ -298,8 +350,15 @@ class SMPLifyLoss(nn.Module):
                  bending_prior_weight=0.0,
                  hand_prior_weight=0.0,
                  expr_prior_weight=0.0, jaw_prior_weight=0.0,
-                 coll_loss_weight=0.0,
                  reduction='sum',
+                 sc_module=None,
+                 gen_sc_inside_weight=0.5,
+                 gen_sc_outside_weight=0.0,
+                 gen_sc_contact_weight=0.5,
+                 scopti_weight=0.0,
+                 beta_precomputed=True,
+                 expression_precomputed=True,
+                 prev_body_pose=None,
                  **kwargs):
 
         super(SMPLifyLoss, self).__init__()
@@ -315,10 +374,6 @@ class SMPLifyLoss(nn.Module):
         self.shape_prior = shape_prior
 
         self.interpenetration = interpenetration
-        if self.interpenetration:
-            self.search_tree = search_tree
-            self.tri_filtering_module = tri_filtering_module
-            self.pen_distance = pen_distance
 
         self.use_hands = use_hands
         if self.use_hands:
@@ -330,10 +385,25 @@ class SMPLifyLoss(nn.Module):
             self.expr_prior = expr_prior
             self.jaw_prior = jaw_prior
 
+        if self.interpenetration:
+            self.sc_crit = SelfContactLoss(
+                contact_module=sc_module,
+                inside_loss_weight=gen_sc_inside_weight,
+                outside_loss_weight=gen_sc_outside_weight,
+                contact_loss_weight=gen_sc_contact_weight,
+                align_faces=True,
+                use_hd=True,
+                test_segments=True,
+                device='cuda',
+                model_type='smplx'
+            )
+
         self.register_buffer('data_weight',
                              torch.tensor(data_weight, dtype=dtype))
         self.register_buffer('body_pose_weight',
                              torch.tensor(body_pose_weight, dtype=dtype))
+        self.register_buffer('beta_precomputed',
+                             torch.tensor(beta_precomputed, dtype=dtype))
         self.register_buffer('shape_weight',
                              torch.tensor(shape_weight, dtype=dtype))
         self.register_buffer('bending_prior_weight',
@@ -342,13 +412,53 @@ class SMPLifyLoss(nn.Module):
             self.register_buffer('hand_prior_weight',
                                  torch.tensor(hand_prior_weight, dtype=dtype))
         if self.use_face:
+            self.register_buffer('expression_precomputed',
+                                 torch.tensor(expression_precomputed, dtype=dtype))
             self.register_buffer('expr_prior_weight',
                                  torch.tensor(expr_prior_weight, dtype=dtype))
             self.register_buffer('jaw_prior_weight',
                                  torch.tensor(jaw_prior_weight, dtype=dtype))
         if self.interpenetration:
             self.register_buffer('coll_loss_weight',
-                                 torch.tensor(coll_loss_weight, dtype=dtype))
+                                 torch.tensor(kwargs.get('coll_loss_weight'), dtype=dtype))
+
+        self.body_boneorientationpoint1 = [int(e.split(',')[0]) for e in kwargs[
+            'body_boneorientation_pairs']]
+        self.body_boneorientationpoint2 = [int(e.split(',')[1]) for e in kwargs[
+            'body_boneorientation_pairs']]
+
+        self.hand_boneorientationpoint1_base = [int(e.split(',')[0]) for e in kwargs[
+            'hand_boneorientation_pairs']]
+        self.hand_boneorientationpoint2_base = [int(e.split(',')[1]) for e in kwargs[
+            'hand_boneorientation_pairs']]
+
+        lhand_start = 25
+        rhand_start = 46
+        self.lhand_boneorientationpoint1 = [
+            e + lhand_start for e in self.hand_boneorientationpoint1_base]
+        self.lhand_boneorientationpoint2 = [
+            e + lhand_start for e in self.hand_boneorientationpoint2_base]
+
+        self.rhand_boneorientationpoint1 = [
+            e + rhand_start for e in self.hand_boneorientationpoint1_base]
+        self.rhand_boneorientationpoint2 = [
+            e + rhand_start for e in self.hand_boneorientationpoint2_base]
+
+        self.boneorientation_loss = kwargs.get('boneorientation_loss', False)
+
+        self.left_handpose_path = kwargs.get('left_handpose_path', 'None')
+
+        self.loss_type = loss_type
+
+        if self.interpenetration:
+            self.register_buffer('scopti_weight', torch.tensor(scopti_weight, dtype=dtype))
+
+        self.prev_res_path = kwargs.get('prev_res_path')
+        if self.prev_res_path or self.loss_type != 'sgnify':
+            standing_weight = 50
+        else:
+            standing_weight = 10000
+        self.register_buffer('standing_weight', torch.tensor(standing_weight, dtype=dtype))
 
     def reset_loss_weights(self, loss_weight_dict):
         for key in loss_weight_dict:
@@ -378,6 +488,26 @@ class SMPLifyLoss(nn.Module):
         joint_loss = (torch.sum(weights ** 2 * joint_diff) *
                       self.data_weight ** 2)
 
+        boneorientation_loss = 0.0
+        if self.boneorientation_loss:
+            boneorientation_diff_body = self.robustifier(
+                (gt_joints[:, self.body_boneorientationpoint1, :] - gt_joints[:, self.body_boneorientationpoint2, :]) -
+                (projected_joints[:, self.body_boneorientationpoint1, :] - projected_joints[:, self.body_boneorientationpoint2, :]))
+            boneorientation_loss += torch.sum(
+                boneorientation_diff_body) * self.data_weight ** 2
+            if torch.any(joints_conf[:, 46:67] > 0):
+                boneorientation_diff_rhand = self.robustifier(
+                    (gt_joints[:, self.rhand_boneorientationpoint1, :] - gt_joints[:, self.rhand_boneorientationpoint2, :]) -
+                    (projected_joints[:, self.rhand_boneorientationpoint1, :] - projected_joints[:, self.rhand_boneorientationpoint2, :]))
+                boneorientation_loss += torch.sum(
+                    boneorientation_diff_rhand) * self.data_weight ** 2
+            if torch.any(joints_conf[:, 25:46] > 0) and self.left_handpose_path != 'None':
+                boneorientation_diff_lhand = self.robustifier(
+                    (gt_joints[:, self.lhand_boneorientationpoint1, :] - gt_joints[:, self.lhand_boneorientationpoint2, :]) -
+                    (projected_joints[:, self.lhand_boneorientationpoint1, :] - projected_joints[:, self.lhand_boneorientationpoint2, :]))
+                boneorientation_loss += torch.sum(
+                    boneorientation_diff_lhand) * self.data_weight ** 2
+
         # Calculate the loss from the Pose prior
         if use_vposer:
             pprior_loss = (pose_embedding.pow(2).sum() *
@@ -387,13 +517,49 @@ class SMPLifyLoss(nn.Module):
                 body_model_output.body_pose,
                 body_model_output.betas)) * self.body_pose_weight ** 2
 
-        shape_loss = torch.sum(self.shape_prior(
-            body_model_output.betas)) * self.shape_weight ** 2
+        shape_loss = 0.0
+        if self.beta_precomputed == False:
+            shape_loss = torch.sum(self.shape_prior(
+                body_model_output.betas)) * self.shape_weight ** 2
+
         # Calculate the prior over the joint rotations. This a heuristic used
         # to prevent extreme rotation of the elbows and knees
         body_pose = body_model_output.full_pose[:, 3:66]
         angle_prior_loss = torch.sum(
             self.angle_prior(body_pose)) * self.bending_prior_weight
+
+        standing_loss = 0.0
+        # If the lower body keypoints are not visible assume that the legs are straight
+        lower_body_joints = [11,22,23,24,14,19,20,21]
+        valid_lower_body_joints = []
+        for joint in lower_body_joints:
+            if joints_conf[:, joint] != 0:
+                valid_lower_body_joints.append(joint) 
+        if not valid_lower_body_joints:
+            stand_body_pose = body_pose.detach().clone() 
+            # 12-14 L_Knee, 15-17 R_Knee, 9-11, 12-14
+            # 0-2 Pelvis - not here
+            # 3-5 L_Hip - 0-2
+            # 6-8 R_Hip - 3-5
+            # 9-11 Spine_01, 18-20 Spine_02, 27-29 Spine_03, 6-8, 15-17, 24-26
+            if self.standing_weight > 50:
+                stand_body_pose_idx = np.arange(0,45,1)
+            else:
+                stand_body_pose_idx = np.arange(0,33,1)
+            stand_body_pose[:, stand_body_pose_idx] = 0.0
+            standing_loss = L2Loss(body_pose,
+                                stand_body_pose,
+                                (21, 3), self.standing_weight)
+
+            no_rot = body_model_output.full_pose[:,0:3].detach().clone() 
+            
+            no_rot[:,0] = np.pi
+            if self.standing_weight > 50:
+                no_rot[:,1] = 0
+                no_rot[:,2] = 0
+            standing_loss += L2Loss(body_model_output.full_pose[:,0:3],
+                                    no_rot,
+                                    (1, 3), self.standing_weight ** 2)
 
         # Apply the prior on the pose space of the hand
         left_hand_prior_loss, right_hand_prior_loss = 0.0, 0.0
@@ -412,40 +578,31 @@ class SMPLifyLoss(nn.Module):
         expression_loss = 0.0
         jaw_prior_loss = 0.0
         if self.use_face:
-            expression_loss = torch.sum(self.expr_prior(
-                body_model_output.expression)) * \
-                self.expr_prior_weight ** 2
+            if self.expression_precomputed == False:
+                expression_loss = torch.sum(self.expr_prior(
+                    body_model_output.expression)) * \
+                    self.expr_prior_weight ** 2
 
-            if hasattr(self, 'jaw_prior'):
-                jaw_prior_loss = torch.sum(
-                    self.jaw_prior(
-                        body_model_output.jaw_pose.mul(
-                            self.jaw_prior_weight)))
+                # indent when using SPECTRE
+                if hasattr(self, 'jaw_prior'):
+                    jaw_prior_loss = torch.sum(
+                        self.jaw_prior(
+                            body_model_output.jaw_pose.mul(
+                                self.jaw_prior_weight)))
 
-        pen_loss = 0.0
-        # Calculate the loss due to interpenetration
-        if (self.interpenetration and self.coll_loss_weight.item() > 0):
-            batch_size = projected_joints.shape[0]
-            triangles = torch.index_select(
-                body_model_output.vertices, 1,
-                body_model_faces).view(batch_size, -1, 3, 3)
+        # ==== general self contact loss ====
+        faces_angle_loss, gsc_contact_loss = 0.0, 0.0
+        if self.interpenetration and self.scopti_weight > 0:
+            gsc_contact_loss, faces_angle_loss = \
+                self.sc_crit(vertices=body_model_output.vertices)
+            gsc_contact_loss = self.scopti_weight * gsc_contact_loss
+            faces_angle_loss = 0.1 * faces_angle_loss
 
-            with torch.no_grad():
-                collision_idxs = self.search_tree(triangles)
-
-            # Remove unwanted collisions
-            if self.tri_filtering_module is not None:
-                collision_idxs = self.tri_filtering_module(collision_idxs)
-
-            if collision_idxs.ge(0).sum().item() > 0:
-                pen_loss = torch.sum(
-                    self.coll_loss_weight *
-                    self.pen_distance(triangles, collision_idxs))
-
-        total_loss = (joint_loss + pprior_loss + shape_loss +
-                      angle_prior_loss + pen_loss +
+        # COMMENT SHAPE LOSS
+        total_loss = (joint_loss + pprior_loss + boneorientation_loss + shape_loss +
+                      angle_prior_loss + gsc_contact_loss + faces_angle_loss +
                       jaw_prior_loss + expression_loss +
-                      left_hand_prior_loss + right_hand_prior_loss)
+                      left_hand_prior_loss + right_hand_prior_loss + standing_loss)
         return total_loss
 
 
@@ -499,5 +656,170 @@ class SMPLifyCameraInitLoss(nn.Module):
                 None):
             depth_loss = self.depth_loss_weight ** 2 * torch.sum((
                 camera.translation[:, 2] - self.trans_estimation[:, 2]).pow(2))
+        return depth_loss + joint_loss
 
-        return joint_loss + depth_loss
+
+class TemporalSMPLifyLoss(SMPLifyLoss):
+    def __init__(self,
+                 loss_type,
+                 prev_pose,
+                 **kwargs):
+
+        super(TemporalSMPLifyLoss, self).__init__(**kwargs)
+
+        if prev_pose is not None:
+            self.register_buffer(
+                'body_prev_pose', torch.tensor(prev_pose["body"], dtype=torch.float32))
+            self.register_buffer(
+                'expression_prev_pose', torch.tensor(prev_pose["expression"], dtype=torch.float32))
+            if self.use_hands:
+                self.register_buffer(
+                    'left_hand_prev_pose', prev_pose["left_hand"].clone().detach().requires_grad_(True))
+                self.register_buffer(
+                    'right_hand_prev_pose', prev_pose["right_hand"].clone().detach().requires_grad_(True))
+
+        self.body_temp_smooth_weight = kwargs.get('body_temp_smooth_weight')
+
+        if self.use_hands:
+            self.hand_temp_smooth_weight = kwargs.get(
+                'hand_temp_smooth_weight')
+
+        self.loss_type = loss_type
+
+    def forward(self, body_model_output, camera, gt_joints, joints_conf,
+                body_model_faces, joint_weights,
+                use_vposer=False, pose_embedding=None,
+                **kwargs):
+
+        frame_wise_loss = super(TemporalSMPLifyLoss, self).forward(body_model_output,
+                                                                   camera=camera,
+                                                                   gt_joints=gt_joints,
+                                                                   body_model_faces=body_model_faces,
+                                                                   joints_conf=joints_conf,
+                                                                   joint_weights=joint_weights,
+                                                                   pose_embedding=pose_embedding,
+                                                                   use_vposer=use_vposer,
+                                                                   **kwargs)
+
+        temporal_loss = 0.0
+        if hasattr(self, 'body_prev_pose') and torch.any((body_model_output.full_pose[:, 3:66]).detach().cpu() > 0):
+            body_temp_smooth_weight = self.body_temp_smooth_weight
+            body_loss = L2Loss(body_model_output.full_pose[:, 3:66],
+                               self.body_prev_pose,
+                               (21, 3), body_temp_smooth_weight)
+
+            expression_loss = 0.0
+            if self.use_face and self.expression_precomputed == False:
+                expression_loss = torch.sum((body_model_output.expression -
+                                             self.expression_prev_pose) ** 2) * 10
+
+            right_hand_loss = 0.0
+            right_wrist_loss = 0.0
+            if self.use_hands and torch.any((body_model_output.right_hand_pose).detach().cpu() > 0):
+                right_hand_loss = L2Loss(body_model_output.right_hand_pose,
+                                         self.right_hand_prev_pose,
+                                         (15, 3), self.hand_temp_smooth_weight)
+
+                if torch.median(joints_conf[:, 46:67]) == 0.0:
+                    right_wrist_loss = L2Loss(body_model_output.full_pose[:, 63:66],
+                                    self.body_prev_pose[:, 60:63],
+                                    (1, 3), 100)
+
+            left_hand_loss = 0.0
+            left_wrist_loss = 0.0
+            if self.use_hands and torch.any((body_model_output.left_hand_pose).detach().cpu() > 0):
+                left_hand_loss = L2Loss(body_model_output.left_hand_pose,
+                                        self.left_hand_prev_pose,
+                                        (15, 3), self.hand_temp_smooth_weight)
+
+                if torch.median(joints_conf[:, 25:46]) == 0.0:
+                    left_wrist_loss = L2Loss(body_model_output.full_pose[:, 60:63],
+                                    self.body_prev_pose[:, 57:60],
+                                    (1, 3), 100)
+            temporal_loss = body_loss + right_hand_loss + left_hand_loss + \
+                right_wrist_loss + left_wrist_loss + expression_loss # + arms_loss
+
+        total_loss = frame_wise_loss + temporal_loss
+
+        return total_loss
+
+
+class SGNifyLoss(TemporalSMPLifyLoss):
+    def __init__(self,
+                 loss_type,
+                 handshape_reference,
+                 **kwargs):
+        super(SGNifyLoss, self).__init__(loss_type, **kwargs)
+
+        self.use_symmetry = kwargs.get('use_symmetry')
+        self.symmetry_weight = kwargs.get('symmetry_weight')
+
+        if handshape_reference:
+            if "right_hand" in handshape_reference:
+                self.register_buffer('right_hand_ref',
+                                     handshape_reference["right_hand"].clone().detach().requires_grad_(True))
+            if "left_hand" in handshape_reference:
+                self.register_buffer('left_hand_ref',
+                                     handshape_reference["left_hand"].clone().detach().requires_grad_(True))
+            else:
+                self.register_buffer('left_hand_ref', None)
+        else:
+            self.register_buffer('right_hand_ref', None)
+            self.register_buffer('left_hand_ref', None)
+
+        self.right_reference_weight = kwargs.get('right_reference_weight')
+        self.left_reference_weight = kwargs.get('left_reference_weight')
+
+        self.loss_type = loss_type
+
+    def forward(self, body_model_output, camera, gt_joints, joints_conf,
+                body_model_faces, joint_weights,
+                use_vposer=False, pose_embedding=None,
+                **kwargs):
+
+        temporal_loss = super(SGNifyLoss, self).forward(body_model_output,
+                                                        camera=camera,
+                                                        gt_joints=gt_joints,
+                                                        body_model_faces=body_model_faces,
+                                                        joints_conf=joints_conf,
+                                                        joint_weights=joint_weights,
+                                                        pose_embedding=pose_embedding,
+                                                        use_vposer=use_vposer,
+                                                        **kwargs)
+
+        symmetry_loss = 0.0
+        if torch.any((body_model_output.right_hand_pose).detach().cpu() > 0) and torch.any((body_model_output.left_hand_pose).detach().cpu() > 0):
+            # Calculate the loss due to hand symmetry
+            if self.use_symmetry:
+                flip_vector = torch.tensor([1.0, -1.0, -1.0], device='cuda')
+                flipped_left_hand_pose = torch.reshape((torch.reshape(
+                    body_model_output.left_hand_pose, (15, 3)) * flip_vector), (-1,))
+                symmetry_loss = L2Loss(body_model_output.right_hand_pose,
+                                       flipped_left_hand_pose,
+                                       (15, 3), self.symmetry_weight)
+
+        right_handpose_loss = 0.0
+        if self.right_hand_ref != None and torch.any((body_model_output.right_hand_pose).detach().cpu() > 0):
+            if torch.median(joints_conf[:, 46:67]) == 0.0 and not self.use_symmetry:
+                reference_weight = self.right_reference_weight * 10
+            else:
+                reference_weight = self.right_reference_weight
+            right_handpose_loss = L2Loss(body_model_output.right_hand_pose,
+                                         self.right_hand_ref,
+                                         (15, 3), reference_weight)
+
+        left_handpose_loss = 0.0
+        if self.left_hand_ref != None and torch.any((body_model_output.left_hand_pose).detach().cpu() > 0):
+            if torch.median(joints_conf[:, 25:46]) == 0.0 and not self.use_symmetry:
+                reference_weight = self.left_reference_weight * 10
+            else:
+                reference_weight = self.left_reference_weight
+            left_handpose_loss = L2Loss(body_model_output.left_hand_pose,
+                                        self.left_hand_ref,
+                                        (15, 3), reference_weight)
+
+        constraint_loss = symmetry_loss + right_handpose_loss + left_handpose_loss
+
+        total_loss = temporal_loss + constraint_loss
+
+        return total_loss

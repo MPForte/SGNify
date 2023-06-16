@@ -37,7 +37,7 @@ def parse_config(argv=None):
     parser.add_argument('--data_folder',
                         default=os.getcwd(),
                         help='The directory that contains the data.')
-    parser.add_argument('--max_persons', type=int, default=3,
+    parser.add_argument('--max_persons', type=int, default=1,
                         help='The maximum number of persons to process')
     parser.add_argument('-c', '--config',
                         required=True, is_config_file=True,
@@ -164,7 +164,7 @@ def parse_config(argv=None):
                         help='The path to the V-Poser checkpoint')
     # Left/Right shoulder and hips
     parser.add_argument('--init_joints_idxs', nargs='*', type=int,
-                        default=[9, 12, 2, 5],
+                        default=[9, 12, 2, 5, 3, 6, 10, 13],
                         help='Which joints to use for initializing the camera')
     parser.add_argument('--body_tri_idxs', nargs='*',
                         #  default='5.12,2.9',
@@ -226,9 +226,8 @@ def parse_config(argv=None):
                         type=float, nargs='*',
                         help='The weights of the pose regularizer of the' +
                         ' hands')
-    parser.add_argument('--coll_loss_weights',
-                        default=[0.0, 0.0, 0.0, 2.0], type=float,
-                        nargs='*',
+    parser.add_argument('--coll_loss_weight',
+                        default=0.0, type=float,
                         help='The weight for the collision term')
 
     parser.add_argument('--depth_loss_weight', default=1e2, type=float,
@@ -278,6 +277,105 @@ def parse_config(argv=None):
                         help='The tolerance threshold for the function')
     parser.add_argument('--maxiters', type=int, default=100,
                         help='The maximum iterations for the optimization')
+    parser.add_argument('--boneorientation_loss', default=True,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Use the bone orientation loss')
+    parser.add_argument('--body_boneorientation_pairs',
+                        default=["2,3", "3,4", "5,6", "6,7", "10,11", "13,14", "11,22",
+                                 "14,19", "11,24", "14,21", "9,10", "12,13"],  # in the full body case
+                        nargs='*',
+                        # type=int,
+                        help='Joint pairs in the body')
+    parser.add_argument('--hand_boneorientation_pairs',
+                        default=["0,1", "0,5", "0,9", "0,13", "0,17", "1,2", "5,6", "9,10", "13,14", "17,18", "2,3", "6,7",
+                                 "10,11", "14,15", "18,19", "3,4", "7,8", "11,12", "15,16", "19,20"],  # in the full body case
+                        nargs='*',
+                        # type=int,
+                        help='Joint pairs in the body in the hands')
+
+    # temporal
+    parser.add_argument('--start_opt_stage', default=0, type=int,
+                        help='Which smplify-x optimization stage to start with: [0:5]')
+    parser.add_argument('--prev_res_path', type=str, default=None,
+                        help='The file where results from previous frame'
+                             ' is stored. This will be used for initialization')
+    parser.add_argument('--body_temp_smooth_weight',
+                        default=0.0,
+                        type=float,
+                        help='The weight of the body temporal loss')
+    parser.add_argument('--hand_temp_smooth_weight',
+                        default=0.0,
+                        type=float,
+                        help='The weight of the hand temporal loss')
+
+    # SGNify constraints
+    # parser.add_argument('--class_sign', type=str, default='-1',
+    #                     help='The sign of the class')
+    parser.add_argument('--use_symmetry', default=False,
+                        type=lambda x: x.lower() in ['true', '1'],
+                        help='Use the symmetry between the two hands in the optimization process')
+    parser.add_argument('--symmetry_weight',
+                        default=0.0,
+                        type=float,
+                        help='The weight of the symmetry constraint')
+    parser.add_argument('--right_handpose_path', type=str, default=None,
+                        help='The file where reference right handpose is stored')
+    parser.add_argument('--right_reference_weight',
+                        default=0.0,
+                        type=float,
+                        help='The weight of the right reference handpose constraint')
+    parser.add_argument('--left_handpose_path', type=str, default=None,
+                        help='The file where reference left handpose is stored')
+    parser.add_argument('--left_reference_weight',
+                        default=0.0,
+                        type=float,
+                        help='The weight of the left reference constraint')
+    parser.add_argument('--pixie_path', type=str, default=None,
+                        help='The file where results from PIXIE is stored. This will be used for initialization')
+    parser.add_argument('--scopti_weights',
+                        default=[0.0, 0.0, 0.0, 0.0, 1000.0], type=float,
+                        nargs='*',
+                        help='The weights for the interp')
+    
+    #multi-view
+    parser.add_argument('--calib_path', type=str, default='calibration',
+                        help='The folder where calibration files (xml) are stored')
+
+                        
+    parser.add_argument('--beta_precomputed', default=False,
+                        type=lambda arg: arg.lower() in ['true', '1'],
+                        help='Use the pre-computed beta')
+    parser.add_argument('--beta_path', type=str, default='',
+                        help='The file where precomputed shape are stored')
+    parser.add_argument('--expression_precomputed', default=False,
+                        type=lambda arg: arg.lower() in ['true', '1'],
+                        help='Use the pre-computed expression')
+    parser.add_argument('--expression_path', type=str, default='',
+                        help='The file where precomputed expressions are stored')
+
+
+    parser.add_argument('--camera_translation_path', type=str, default='',
+                        help='The file where precomputed camera translation are stored')
+    # interpolation
+    parser.add_argument('--pkl', nargs='+', type=str, required=False,
+                        help='The pkl files that will be read')   
+    parser.add_argument('--save_folder', type=str, required=False,
+                        help='The folder where to store the pkl files') 
+    parser.add_argument('--reference_start', type=int, required=False,
+                        help='The first frame') 
+    parser.add_argument('--reference_end', type=int, required=False,
+                        help='The final frame')   
+
+    parser.add_argument('--joints_to_increase', default=-1, type=int,
+                        nargs='*',
+                        help='Indices of joints to be weighted more')
+    parser.add_argument('--joint-reg-path', dest='joint_reg_path', type=str,
+                        default='/ps/project/common/expose_release/data/SMPLX_to_J14.pkl',
+                        help='Path to the joint regressor')
+    parser.add_argument('--use-joint-reg', dest='use_joint_regressor',
+                        type=lambda x: x.lower() in ['true', '1'],
+                        default=True,
+                        help='Use a joint regressor')
 
     args = parser.parse_args(argv)
 

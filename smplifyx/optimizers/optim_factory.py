@@ -22,6 +22,7 @@ from __future__ import division
 
 import torch.optim as optim
 from .lbfgs_ls import LBFGS as LBFGSLs
+from .trust_region_newton_cg import TrustRegionNewtonCG as TrustRegionNewtonCG
 
 
 def create_optimizer(parameters, optim_type='lbfgs',
@@ -61,5 +62,7 @@ def create_optimizer(parameters, optim_type='lbfgs',
                           weight_decay=weight_decay,
                           nesterov=use_nesterov),
                 False)
+    elif optim_type == 'trustncg':
+        return (TrustRegionNewtonCG(parameters), True)
     else:
         raise ValueError('Optimizer {} not supported!'.format(optim_type))
