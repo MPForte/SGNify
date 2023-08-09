@@ -201,7 +201,7 @@ def interpolate(*, pkl_1, pkl_2, save_folder, reference_start, reference_end, en
     return run(
         [
             "python",
-            "SGNify/smplifyx/interpolate.py",
+            "utils/interpolate.py",
             "--pkl",
             pkl_1,
             pkl_2,
