@@ -8,7 +8,7 @@ username=$(urle $username)
 password=$(urle $password)
 
 echo -e "\nDownloading SGNify..."
-wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=sgnify&sfile=data.zip&resume=1' -O 'data.zip' --no-check-certificate --continue
+wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=sgnify&resume=1&sfile=data.zip' -O 'data.zip' --no-check-certificate --continue
 unzip data.zip -d data/
 rm data.zip
 
