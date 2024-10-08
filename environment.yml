@@ -18,7 +18,7 @@ dependencies:
   - numpy
   - omegaconf
   - openh264
-  - pytorch=1.11.0
+  - pytorch==1.11.0
   - pytorch-cuda
   - pytorch3d::pytorch3d
   - scikit-learn==1.1.3
