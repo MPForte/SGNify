@@ -29,7 +29,7 @@ This repository contains the fitting code used for the experiments in [Reconstru
 ### Setup
 1. Create an account at https://sgnify.is.tue.mpg.de/
 2. Run `./install.sh`
-3. Download [[this file](https://1drv.ms/u/s!AimBgYV7JjTlgS5rLeRAJiWobCdh?e=41GsDd)], rename it `vitpose-huge.pth` and place it inside `data.coco17`
+3. Download [[this file](https://1drv.ms/u/s!AimBgYV7JjTlgS5rLeRAJiWobCdh?e=41GsDd)], rename it `vitpose-huge.pth` and place it inside `data/coco17`
 
 ### Fitting 
 Run the following command to execute the code:
