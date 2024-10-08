@@ -9,16 +9,17 @@ password=$(urle $password)
 
 echo -e "\nDownloading SGNify..."
 wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=sgnify&resume=1&sfile=data.zip' -O 'data.zip' --no-check-certificate --continue
-unzip data.zip -d data/
+unzip data.zip
 rm data.zip
 
-conda env create -f environment.yml 
-eval "$(conda shell.bash hook)"
+#conda env create -f environment.yml 
+#eval "$(conda shell.bash hook)"
 
-conda activate sgnify
-pip install --no-deps pyrender==0.1.23
-
-git submodule update --init --recursive
+#conda activate sgnify
+#git submodule update --init --recursive
+#pip install --no-deps pyrender==0.1.23
+#pip install -e ./spectre/external/face_alignment
+#pip install -e ./spectre/external/face_detection
 
 cd spectre
 echo -e "\nDownload pretrained SPECTRE model..."
