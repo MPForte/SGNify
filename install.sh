@@ -12,26 +12,13 @@ wget --post-data "username=$username&password=$password" 'https://download.is.tu
 unzip data.zip -d data/
 rm data.zip
 
-# Create a temporary Git configuration to skip LFS
-cat > ~/.gitconfig_nolfs << EOF
-[filter "lfs"]
-    smudge = git-lfs smudge --skip -- %f
-    process = git-lfs filter-process --skip
-[lfs]
-    fetchexclude = *
-EOF
-
-# Function to run Git commands without LFS
-git_nolfs() {
-    GIT_CONFIG_GLOBAL=~/.gitconfig_nolfs GIT_LFS_SKIP_SMUDGE=1 git -c filter.lfs.smudge= -c filter.lfs.process= "$@"
-}
-
-# Update submodules without LFS
-git_nolfs submodule update --init --recursive
-
-# Create Conda environment
 conda env create -f environment.yml 
 eval "$(conda shell.bash hook)"
+
+conda activate sgnify
+pip install --no-deps pyrender==0.1.23
+
+git submodule update --init --recursive
 
 cd spectre
 echo -e "\nDownload pretrained SPECTRE model..."
@@ -41,8 +28,3 @@ mv spectre_model.tar pretrained/
 cd ..
 
 cp -r data/FLAME2020 spectre/data/FLAME2020
-
-# Clean up temporary Git configuration
-rm ~/.gitconfig_nolfs
-
-echo -e "\nInstallation completed successfully!"

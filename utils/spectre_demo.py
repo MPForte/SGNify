@@ -135,7 +135,8 @@ def main(args):
         overlapping_indices[-2] = np.unique(overlapping_indices[-2]).tolist()
         overlapping_indices = overlapping_indices[:-1]
 
-    overlapping_indices = np.array(overlapping_indices)
+    # overlapping_indices = np.array(overlapping_indices)
+    overlapping_indices = np.array(overlapping_indices, dtype=object)
 
     image_paths = np.array(image_paths)  # do this to index with multiple indices
     all_shape_images = []

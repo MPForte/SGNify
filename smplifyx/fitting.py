@@ -333,7 +333,7 @@ def axis_angle_to_rotation_6d(axis_angle: torch.Tensor) -> torch.Tensor:
 class SMPLifyLoss(nn.Module):
 
     def __init__(self,
-                 loss_type=None,
+                 loss_type,
                  rho=100,
                  body_pose_prior=None,
                  shape_prior=None,
@@ -457,7 +457,7 @@ class SMPLifyLoss(nn.Module):
         if self.prev_res_path or self.loss_type != 'sgnify':
             standing_weight = 50
         else:
-            standing_weight = 10000
+            standing_weight = 500
         self.register_buffer('standing_weight', torch.tensor(standing_weight, dtype=dtype))
 
     def reset_loss_weights(self, loss_weight_dict):
@@ -665,7 +665,7 @@ class TemporalSMPLifyLoss(SMPLifyLoss):
                  prev_pose,
                  **kwargs):
 
-        super(TemporalSMPLifyLoss, self).__init__(**kwargs)
+        super(TemporalSMPLifyLoss, self).__init__(loss_type=loss_type, **kwargs)
 
         if prev_pose is not None:
             self.register_buffer(
@@ -749,7 +749,7 @@ class SGNifyLoss(TemporalSMPLifyLoss):
                  loss_type,
                  handshape_reference,
                  **kwargs):
-        super(SGNifyLoss, self).__init__(loss_type, **kwargs)
+        super(SGNifyLoss, self).__init__(loss_type=loss_type, **kwargs)
 
         self.use_symmetry = kwargs.get('use_symmetry')
         self.symmetry_weight = kwargs.get('symmetry_weight')

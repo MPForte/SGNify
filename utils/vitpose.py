@@ -10,11 +10,11 @@ from vitpose.utils.visualization import draw_points_and_skeleton, joints_dict
 
 def run_vitpose(*, images_folder, output_folder):
     det_model = YOLO("data/yolov8n.pt")
-    pose_model = vitpose_inference_model(batch_size=1, model_mode="huge", weights_dir="data")
+    pose_model = vitpose_inference_model(batch_size=1, model_spec="coco17-huge", weights_dir="data")
 
     for image_path in tqdm.tqdm(sorted(images_folder.glob("*"))):
         im = Image.open(image_path)
-        x1, y1, x2, y2 = det_model(im, classes=0, max_det=1, verbose=False)[0].boxes.xyxy[0].tolist()
+        x1, y1, x2, y2 = det_model(im, cls=0, max_det=1, verbose=False)[0].boxes.xyxy[0].tolist()
         pose_preds = pose_model([np.array(im.crop((x1, y1, x2, y2)))])[0]
         pose_preds[:, 0] += y1
         pose_preds[:, 1] += x1
@@ -23,7 +23,7 @@ def run_vitpose(*, images_folder, output_folder):
             draw_points_and_skeleton(
                 np.array(im).copy(),
                 pose_preds,
-                joints_dict()["coco"]["skeleton"],
+                joints_dict()["coco17"]["skeleton"],
                 person_index=0,
                 points_color_palette="gist_rainbow",
                 skeleton_color_palette="jet",
