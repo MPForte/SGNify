@@ -12,14 +12,14 @@ wget --post-data "username=$username&password=$password" 'https://download.is.tu
 unzip data.zip
 rm data.zip
 
-#conda env create -f environment.yml 
-#eval "$(conda shell.bash hook)"
+conda env create -f environment.yml 
+eval "$(conda shell.bash hook)"
+conda activate sgnify
 
-#conda activate sgnify
-#git submodule update --init --recursive
-#pip install --no-deps pyrender==0.1.23
-#pip install -e ./spectre/external/face_alignment
-#pip install -e ./spectre/external/face_detection
+git submodule update --init --recursive
+pip install --no-deps pyrender==0.1.23
+pip install -e ./spectre/external/face_alignment
+pip install -e ./spectre/external/face_detection
 
 cd spectre
 echo -e "\nDownload pretrained SPECTRE model..."
