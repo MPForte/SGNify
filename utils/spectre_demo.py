@@ -136,7 +136,7 @@ def main(args):
         overlapping_indices = overlapping_indices[:-1]
 
     # overlapping_indices = np.array(overlapping_indices)
-    overlapping_indices = np.array(overlapping_indices, dtype=object)
+    overlapping_indices = [np.array(chunk, dtype=int) for chunk in overlapping_indices]
 
     image_paths = np.array(image_paths)  # do this to index with multiple indices
     all_shape_images = []
@@ -146,11 +146,9 @@ def main(args):
     all_shapes = []
 
     with torch.no_grad():
-        for chunk_id in range(len(overlapping_indices)):
-            print(
-                "Processing frames {} to {}".format(overlapping_indices[chunk_id][0], overlapping_indices[chunk_id][-1])
-            )
-            image_paths_chunk = image_paths[overlapping_indices[chunk_id]]
+        for chunk_id, chunk in enumerate(overlapping_indices):
+            print(f"Processing frames {chunk[0]} to {chunk[-1]}")
+            image_paths_chunk = image_paths[chunk]
 
             landmarks_chunk = landmarks[overlapping_indices[chunk_id]] if args.crop_face else None
 
