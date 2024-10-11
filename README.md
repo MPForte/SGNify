@@ -35,12 +35,12 @@ This repository contains the fitting code used for the experiments in [Reconstru
 
 To test that the setup worked, run:
 ```Shell
+conda activate sgnify
 python sgnify.py \
     --image_dir_path data/demo/test_frames \
     --output_folder data/demo/output_test
 ```
-We provided the expected output.
-Check that `data/demo/output_test` and `data/demo/output` have the same results.
+We provided the expected output; check that `data/demo/output_test` and `data/demo/output` have the same results.
 
 ### Fitting 
 Run the following command to execute the code:
