@@ -8,7 +8,6 @@ dependencies:
   - python=3.9.*
   - pip
   - git
-  - git-lfs
   - configargparse
   - einops
   - fastai::opencv-python-headless
@@ -27,7 +26,6 @@ dependencies:
   - trimesh
   - yacs
   - mkl=2024.0.0
-  - unzip
   - pip:
     - git+https://github.com/muelea/selfcontact
     - git+https://github.com/nghorbani/ViTPose
