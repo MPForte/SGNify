@@ -8,6 +8,7 @@ dependencies:
   - python=3.9.*
   - pip
   - git
+  - git-lfs
   - configargparse
   - einops
   - fastai::opencv-python-headless
