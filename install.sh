@@ -18,6 +18,9 @@ unzip data.zip
 rm data.zip
 
 git submodule update --init --recursive
+git submodule foreach --recursive git lfs install
+git lfs pull -I "./spectre/external/face_detection/ibug/face_detection/retina_face/weights"
+
 pip install --no-deps pyrender==0.1.23
 pip install -e ./spectre/external/face_alignment
 pip install -e ./spectre/external/face_detection
