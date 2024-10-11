@@ -28,8 +28,19 @@ This repository contains the fitting code used for the experiments in [Reconstru
 
 ### Setup
 1. Create an account at https://sgnify.is.tue.mpg.de/
+2. Ensure a latest `conda` version
 2. Clone this repo (without `recursive`)
-3. Run `./install.sh`
+4. Change directory `cd SGNify`
+5. Run `./install.sh`
+
+To test that the setup worked, run:
+```Shell
+python sgnify.py \
+    --image_dir_path data/demo/test_frames \
+    --output_folder data/demo/output_test
+```
+We provided the expected output.
+Check that `data/demo/output_test` and `data/demo/output` have the same results.
 
 ### Fitting 
 Run the following command to execute the code:
@@ -39,9 +50,6 @@ python sgnify.py \
     --output_folder OUTPUT_FOLDER
 ```
 where the `DATA_PATH` should be either a path to a video or a folder of images.
-
-We provided a `demo` folder with only two frames just to test that all different parts run.
-This folder contains also the expected output. 
 
 ## Citation
 
