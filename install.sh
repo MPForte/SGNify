@@ -17,7 +17,7 @@ conda activate sgnify
 unzip data.zip
 rm data.zip
 
-git submodule update --init --recursive
+git submodule update --init --recursive --force
 git submodule foreach --recursive git lfs install
 git lfs pull -I "./spectre/external/face_detection/ibug/face_detection/retina_face/weights"
 
