@@ -20,9 +20,19 @@ def extract_frames(*, video_path, output_folder):
 
 def copy_frames(*, image_dir_path, output_folder):
     i = 1
-    print(image_dir_path)
-    for pngfile in sorted(glob.iglob(os.path.join(str(image_dir_path), "*.png"))):
-        shutil.copy(pngfile, output_folder.joinpath("{:03}.png".format(i)))
+    # Use a tuple of patterns for both PNG and JPG/JPEG files
+    patterns = ('*.png', '*.jpg', '*.jpeg')
+    
+    # Create a list of all matching files from all patterns
+    image_files = []
+    for pattern in patterns:
+        image_files.extend(glob.iglob(os.path.join(str(image_dir_path), pattern)))
+    
+    # Sort and process the files
+    for imgfile in sorted(image_files):
+        # Preserve the original file extension
+        ext = os.path.splitext(imgfile)[1]
+        shutil.copy(imgfile, output_folder.joinpath(f"{i:03}{ext}"))
         i += 1
 
     return
