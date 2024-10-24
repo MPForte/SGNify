@@ -19,20 +19,24 @@ def extract_frames(*, video_path, output_folder):
 
 
 def copy_frames(*, image_dir_path, output_folder):
+    from PIL import Image
     i = 1
-    # Use a tuple of patterns for both PNG and JPG/JPEG files
     patterns = ('*.png', '*.jpg', '*.jpeg')
     
-    # Create a list of all matching files from all patterns
     image_files = []
     for pattern in patterns:
         image_files.extend(glob.iglob(os.path.join(str(image_dir_path), pattern)))
     
-    # Sort and process the files
     for imgfile in sorted(image_files):
-        # Preserve the original file extension
-        ext = os.path.splitext(imgfile)[1]
-        shutil.copy(imgfile, output_folder.joinpath(f"{i:03}{ext}"))
+        output_path = output_folder.joinpath(f"{i:03}.png")
+        
+        # If already PNG, just copy, otherwise convert it
+        if imgfile.lower().endswith('.png'):
+            shutil.copy(imgfile, output_path)
+        else:
+            img = Image.open(imgfile)
+            img.save(output_path, "PNG")
+        
         i += 1
 
     return
