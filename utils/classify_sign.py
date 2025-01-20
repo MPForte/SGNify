@@ -27,23 +27,48 @@ def compute_sign_class(*, result_folder, openpose_folder, segment_path, sign_cla
     y_r = y[4][c_r] / h
     y_l = y[7][c_l] / h
 
-    v1 = min(np.ptp(y_r) if len(y_r) else 0, np.ptp(y_l) if len(y_l) else 0)
+    v1 = min(
+        np.ptp(y_r) if len(y_r) else 0,
+        np.ptp(y_l) if len(y_l) else 0
+    )
 
     base_folder = result_folder.joinpath("rps", "sign_classification")
-    with base_folder.joinpath("ref_right_1.pkl").open("rb") as file:
-        right_1 = pickle.load(file)["right_hand_pose"][0]
-    with base_folder.joinpath("ref_right_2.pkl").open("rb") as file:
-        right_2 = pickle.load(file)["right_hand_pose"][0]
-    with base_folder.joinpath("ref_left_1.pkl").open("rb") as file:
-        left_1 = pickle.load(file)["left_hand_pose"][0]
-    with base_folder.joinpath("ref_left_2.pkl").open("rb") as file:
-        left_2 = pickle.load(file)["left_hand_pose"][0]
+    try:
+        with base_folder.joinpath("ref_right_1.pkl").open("rb") as file:
+            right_1 = pickle.load(file)["right_hand_pose"][0]
+        with base_folder.joinpath("ref_right_2.pkl").open("rb") as file:
+            right_2 = pickle.load(file)["right_hand_pose"][0]
+        with base_folder.joinpath("ref_left_1.pkl").open("rb") as file:
+            left_1 = pickle.load(file)["left_hand_pose"][0]
+        with base_folder.joinpath("ref_left_2.pkl").open("rb") as file:
+            left_2 = pickle.load(file)["left_hand_pose"][0]
+    except Exception:
+        right_1 = np.zeros((12,))
+        right_2 = np.zeros((12,))
+        left_1 = np.zeros((12,))
+        left_2 = np.zeros((12,))
 
-    v3 = scipy.spatial.distance.cosine(right_1, left_1)
+    try:
+        v3 = scipy.spatial.distance.cosine(right_1, left_1)
+        if np.isnan(v3):
+            v3 = 0
+    except Exception:
+        v3 = 0
 
-    v5 = max(scipy.spatial.distance.cosine(right_1, right_2), scipy.spatial.distance.cosine(left_1, left_2))
+    try:
+        v5 = max(
+            scipy.spatial.distance.cosine(right_1, right_2),
+            scipy.spatial.distance.cosine(left_1, left_2)
+        )
+        if np.isnan(v5):
+            v5 = 0
+    except Exception:
+        v5 = 0
 
-    with open("data/sign_classifier.pkl", "rb") as file:
-        clf = pickle.load(file)
-
-    sign_class_path.write_text(clf.predict([[v1, v3, v5]])[0][:2])
+    try:
+        with open("data/sign_classifier.pkl", "rb") as file:
+            clf = pickle.load(file)
+        prediction = clf.predict([[v1, v3, v5]])[0][:2]
+        sign_class_path.write_text(prediction)
+    except Exception:
+        sign_class_path.write_text("0a")

@@ -1,15 +1,7 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-
-from fb_types import Device
 
 
 """
@@ -207,7 +199,6 @@ def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str) -> torch
         _axis_angle_rotation(c, e)
         for c, e in zip(convention, torch.unbind(euler_angles, -1))
     ]
-    # return functools.reduce(torch.matmul, matrices)
     return torch.matmul(torch.matmul(matrices[0], matrices[1]), matrices[2])
 
 
@@ -297,7 +288,9 @@ def matrix_to_euler_angles(matrix: torch.Tensor, convention: str) -> torch.Tenso
 
 
 def random_quaternions(
-    n: int, dtype: Optional[torch.dtype] = None, device: Optional[Device] = None
+    n: int,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[torch.device, str]] = None,
 ) -> torch.Tensor:
     """
     Generate random quaternions representing rotations,
@@ -321,7 +314,9 @@ def random_quaternions(
 
 
 def random_rotations(
-    n: int, dtype: Optional[torch.dtype] = None, device: Optional[Device] = None
+    n: int,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[torch.device, str]] = None,
 ) -> torch.Tensor:
     """
     Generate random rotations as 3x3 rotation matrices.
@@ -340,7 +335,8 @@ def random_rotations(
 
 
 def random_rotation(
-    dtype: Optional[torch.dtype] = None, device: Optional[Device] = None
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[torch.device, str]] = None,
 ) -> torch.Tensor:
     """
     Generate a single random 3x3 rotation matrix.
@@ -369,7 +365,6 @@ def standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
         Standardized quaternions as tensor of shape (..., 4).
     """
     return torch.where(quaternions[..., 0:1] < 0, -quaternions, quaternions)
-
 
 def quaternion_raw_multiply(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """

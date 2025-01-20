@@ -409,7 +409,6 @@ def main(args):
             args.sign_class = sign_class_path.read_text().strip()
 
         # 4. Find RPS (for now we do not have a weighted average)
-        # for now we only have the rps for subclasses A
         print("Finding the RPS using valid MediaPipe frames...")
         compute_rps(
             sign_class=args.sign_class,

@@ -25,7 +25,13 @@ import rotation_conversion
 import smplx
 import torch
 import trimesh
-from cmd_parser import parse_config
+import sys
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+smplifyx_path = os.path.join(project_root, 'smplifyx')
+sys.path.insert(0, project_root)
+sys.path.insert(0, smplifyx_path)
+
+from smplifyx.cmd_parser import parse_config
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
@@ -101,6 +107,17 @@ if __name__ == "__main__":
     reference_end = args.reference_end
     end_frame = args.end_frame
 
+    if any('.yaml' in arg for arg in remaining):
+        # Find the yaml argument
+        for i, arg in enumerate(remaining):
+            if '.yaml' in arg:
+                # Remove the leading "SGNify/" if it exists
+                if arg.startswith('SGNify/'):
+                    arg = arg[len('SGNify/'):]
+                # Convert relative path to absolute path
+                config_path = os.path.join(project_root, arg)
+                remaining[i] = config_path
+                break
     args = parse_config(remaining)
 
     dtype = torch.float32

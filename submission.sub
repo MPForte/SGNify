@@ -1,0 +1,13 @@
+executable = /home/forte/miniforge3/envs/sgnify/bin/python
+arguments = sgnify.py --image_dir_path data/demo/$(arg1) --output_folder data/demo/output
+error = /home/forte/SGNify/cluster_tmplogs/$(arg1).err
+output = /home/forte/SGNify/cluster_tmplogs/$(arg1).out
+log = /home/forte/SGNify/cluster_tmplogs/$(arg1).log
+request_cpus = 1
+request_gpus = 1
+request_memory = 48000
+requirements = (TARGET.CUDACapability >= 7 && TARGET.CUDACapability <= 8.6) && (TARGET.CUDAGlobalMemoryMb > 48000)
+
+getenv = true
+
+queue arg1 from input.txt
