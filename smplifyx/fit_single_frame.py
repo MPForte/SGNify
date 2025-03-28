@@ -711,40 +711,47 @@ def fit_single_frame(img,
             pickle.dump(results[min_idx]['result'], result_file, protocol=2)
 
         if save_meshes or visualize:
-            vertices = model_output.vertices.detach().cpu().numpy().squeeze()
-
             import trimesh
+            vertices = model_output.vertices.detach().cpu().numpy().squeeze()
+            # Create vertex colors array (default to light pink)
+            vertex_colors = np.ones((len(vertices), 4)) * [0.9, 0.5, 0.9, 1.0]
 
+            # Create mesh with vertex colors
             out_mesh = trimesh.Trimesh(
-                vertices, body_model.faces, process=False)
+                vertices, 
+                body_model.faces, 
+                vertex_colors=vertex_colors,
+                process=False)
+            
             rot = trimesh.transformations.rotation_matrix(
                 np.radians(180), [1, 0, 0])
             out_mesh.apply_transform(rot)
 
             os.environ['PYOPENGL_PLATFORM'] = 'egl'
             if 'GPU_DEVICE_ORDINAL' in os.environ:
-                os.environ['EGL_DEVICE_ID'] = os.environ['GPU_DEVICE_ORDINAL'].split(',')[
-                    0]
+                os.environ['EGL_DEVICE_ID'] = os.environ['GPU_DEVICE_ORDINAL'].split(',')[0]
             import pyrender
 
+            # Create the basic material (will be colored by vertex colors)
             material = pyrender.MetallicRoughnessMaterial(
                 metallicFactor=0.0,
                 alphaMode='OPAQUE',
-                baseColorFactor=(0.9, 0.5, 0.9, 1.0))
+                baseColorFactor=(1.0, 1.0, 1.0, 0.7))  # White base color to let vertex colors show
 
+            # Create a mesh that preserves vertex colors
             mesh = pyrender.Mesh.from_trimesh(
                     out_mesh,
-                    material=material)
+                    material=material,
+                    smooth=False)  # Set smooth=False to preserve vertex colors
 
             out_mesh.export(mesh_fn)                
             scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 0.0])
             scene.add(mesh, 'mesh')
 
+            # Rest of the visualization code remains the same
             height, width = img.shape[:2]
             camera_center = camera.center.detach().cpu().numpy().squeeze()
             camera_transl = camera.translation.detach().cpu().numpy().squeeze()
-            # Equivalent to 180 degrees around the y-axis. Transforms the fit to
-            # OpenGL compatible coordinate system.
             camera_transl[0] *= -1.0
 
             camera_pose = np.eye(4)
@@ -755,7 +762,6 @@ def fit_single_frame(img,
                 cx=camera_center[0], cy=camera_center[1])
             scene.add(camera, pose=camera_pose)
 
-            # Get the lights from the viewer
             light_node = pyrender.DirectionalLight(color=np.ones(3), intensity=2.5)
             scene.add(light_node, pose=camera_pose)
 
@@ -763,15 +769,15 @@ def fit_single_frame(img,
                                             viewport_height=height,
                                             point_size=1.0)
             color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
-            color = color.astype(np.float32) / 255.0
+            img_uint8 = (img * 255).astype(np.uint8)
+            img_rgba = pil_img.fromarray(img_uint8).convert('RGBA')
 
-            valid_mask = (color[:, :, -1] > 0)[:, :, np.newaxis]
-            output_img = (color[:, :, :-1] * valid_mask +
-                            (1 - valid_mask) * img)
+            # Convert rendered mesh to Image
+            mesh_rgba = pil_img.fromarray(color.astype(np.uint8), 'RGBA')
 
-            output_img = pil_img.fromarray((output_img * 255.).astype(np.uint8))
+            # Overlay mesh on original image
+            output_img = pil_img.alpha_composite(img_rgba, mesh_rgba)
 
-            # reduce size output image
             if height > 1080:
                 output_img = output_img.resize((int(width/2), int(height/2)), pil_img.ANTIALIAS)
 
