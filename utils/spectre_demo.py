@@ -197,13 +197,32 @@ def main(args):
     expressions = (torch.cat(all_expressions, dim=0))[2:-2]  # remove padding
     shapes = (torch.cat(all_shapes, dim=0))[2:-2]  # remove padding
 
-    if not os.path.exists(args.output_folder):
-        os.makedirs(args.output_folder)
-    for frame in range(poses.size()[0]):
-        codedict_frame = {"exp": expressions[frame], "pose": poses[frame], "shape": shapes[frame]}
-        with open(f"{args.output_folder}/spectre_{frame+1}.pkl", "wb") as f:
-            pickle.dump(codedict_frame, f, protocol=pickle.HIGHEST_PROTOCOL)
+    # Create output folder if it doesn't exist
+    os.makedirs(args.output_folder, exist_ok=True)
 
+    # Get the original image files (before padding was added)
+    original_image_files = sorted([Path(p) for p in image_paths[2:original_video_length+2]])
+
+    # Save the expression data using the original frame numbers from filenames
+    for i, frame in enumerate(range(poses.size()[0])):
+        if i < len(original_image_files):
+            # Extract the frame number from the filename (e.g., "047.png" -> 47)
+            img_path = original_image_files[i]
+            frame_num = int(img_path.stem)  # This will convert "047" to 47
+            
+            # Create dictionary with expression data
+            # Convert tensors to numpy arrays for pickle compatibility
+            codedict_frame = {
+                "exp": expressions[frame].detach().cpu().numpy(),
+                "pose": poses[frame].detach().cpu().numpy(),
+                "shape": shapes[frame].detach().cpu().numpy()
+            }
+            
+            # Save using pickle.dump instead of torch.save
+            save_path = os.path.join(args.output_folder, f"spectre_{frame_num}.pkl")
+            with open(save_path, 'wb') as f:
+                pickle.dump(codedict_frame, f, protocol=2)  # Use protocol 2 for better compatibility
+            
     vid_shape = tensor2video(torch.cat(all_shape_images, dim=0))[2:-2]  # remove padding
     vid_orig = tensor2video(torch.cat(all_images, dim=0))[2:-2]  # remove padding
     grid_vid = np.concatenate((vid_shape, vid_orig), axis=2)

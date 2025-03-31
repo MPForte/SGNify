@@ -17,6 +17,7 @@ from utils import (
     create_video,
     extract_frames,
     get_end,
+    get_filename_by_index,
     run_mediapipe_hands,
     run_vitpose,
     segment_signs,
@@ -34,9 +35,14 @@ def compute_smpl_x_poses(*, rps_folder, hand, result_folder, images_folder, vali
 
     # Do it inside a loop due to ncg memory issue:
     for frame_int in tqdm.tqdm(valid_frames):
+        # Get original filename by index
+        original_filename = get_filename_by_index(images_folder, frame_int)
         frame_prefix = f"{frame_int:03}"
+        
+        # Create symlink with standard naming for processing
         rps_image_path = rps_images_folder.joinpath(f"{frame_prefix}.png")
-        rps_image_path.symlink_to(images_folder.joinpath(f"{frame_prefix}.png"))
+        rps_image_path.symlink_to(images_folder.joinpath(original_filename))
+        
         rps_keypoint_path = rps_keypoints_folder.joinpath(f"{frame_prefix}_keypoints.json")
 
         confidence = weights[frame_int] + 0.5
@@ -88,7 +94,8 @@ def call_sgnify_0(
             "python",
             "smplifyx/main.py",
             "--config",
-            "cfg_files/fit_sgnifyx_sv.yaml",
+            # "cfg_files/fit_sgnifyx_sv.yaml",
+            "cfg_files/fit_sgnifyx_sv_nobodytemp.yaml",
             "--output_folder",
             output_folder,
             "--data_folder",
@@ -140,7 +147,8 @@ def call_sgnify(
             "python",
             "smplifyx/main.py",
             "--config",
-            "cfg_files/fit_sgnifyx_sv.yaml",
+            # "cfg_files/fit_sgnifyx_sv.yaml",
+            "cfg_files/fit_sgnifyx_sv_nobodytemp.yaml",
             "--output_folder",
             output_folder,
             "--data_folder",
@@ -189,7 +197,20 @@ def run_sgnify(
     right_interp_folder,
     segment_path,
 ):
-    for frame_int in tqdm.trange(1, get_end(result_folder) + 1):
+    # Get a list of available keypoint files
+    keypoint_files = list(sorted(result_folder.joinpath("keypoints").glob("*_keypoints.json")))
+    frame_indices = [int(f.stem.split('_')[0]) for f in keypoint_files]
+    
+    if not frame_indices:
+        raise ValueError("No keypoint files found. Cannot proceed with SGNify.")
+    
+    # Sort indices to ensure proper order
+    frame_indices.sort()
+    is_first_frame = True
+    
+    for frame_int in tqdm.tqdm(frame_indices):
+        # Get original filename by index
+        original_filename = get_filename_by_index(result_folder.joinpath("images"), frame_int)
         frame_prefix = f"{frame_int:03}"
         prev_res_path = output_folder.joinpath("results", f"{frame_int-1:03}.pkl")
 
@@ -199,7 +220,9 @@ def run_sgnify(
 
         path = tmp_data_path.joinpath("images")
         path.mkdir()
-        path.joinpath(f"{frame_prefix}.png").symlink_to(result_folder.joinpath("images", f"{frame_prefix}.png"))
+        path.joinpath(f"{frame_prefix}.png").symlink_to(
+            result_folder.joinpath("images", original_filename)
+        )
 
         path = tmp_data_path.joinpath("keypoints")
         path.mkdir()
@@ -234,7 +257,7 @@ def run_sgnify(
             right_reference_weight = right_reference_weight / 5
             symmetry_weight = symmetry_weight / 5
 
-        if frame_int == 1:
+        if is_first_frame:
             call_sgnify_0(
                 output_folder=output_folder,
                 data_folder=tmp_data_path,
@@ -247,6 +270,7 @@ def run_sgnify(
                 use_symmetry=use_symmetry,
                 symmetry_weight=symmetry_weight,
             )
+            is_first_frame = False
         else:
             call_sgnify(
                 output_folder=output_folder,

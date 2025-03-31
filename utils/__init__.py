@@ -6,6 +6,7 @@ from utils.misc import (
     create_video,
     extract_frames,
     get_end,
+    get_filename_by_index
 )
 from utils.rps import compute_rps, compute_valid_frames
 from utils.segment_signs import segment_signs
@@ -20,6 +21,7 @@ __all__ = [
     "create_video",
     "extract_frames",
     "get_end",
+    "get_filename_by_index",
     "run_mediapipe_hands",
     "run_vitpose",
     "segment_signs",
