@@ -1,8 +1,6 @@
 dataset: 'openpose'
 joints_to_ign: 
-    - 1
-    - 9
-    - 12
+    - -1
 joints_to_increase: 
     - 2
     - 5
@@ -103,7 +101,7 @@ body_boneorientation_pairs: ["1,8", "2,3", "3,4", "5,6", "6,7"]
 hand_boneorientation_pairs: ["0,1", "0,5", "0,9", "0,13", "0,17", "1,2","5,6","9,10","13,14","17,18","2,3","6,7","10,11","14,15","18,19","3,4","7,8","11,12","15,16","19,20"]
 loss_type: sgnify
 symmetry_weight: 3.0e2 #1e3 
-body_temp_smooth_weight: 3.5e2 # 2.5e2
+body_temp_smooth_weight: 2.5e2 # 2.5e2
 hand_temp_smooth_weight: 1.0e1 #1.0e1
 coll_loss_weight: 5.0e2
 start_opt_stage: 2
