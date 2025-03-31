@@ -7,34 +7,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 import re
+import json
+from collections import OrderedDict
 
 
 def get_end(result_path):
     # Simply count the number of image files
     return len(list(result_path.joinpath("images").glob("*.png")))
-
-
-def get_filename_by_index(folder_path, index):
-    """
-    Get the filename at a specific index in the sorted list of files.
-    
-    Parameters:
-    folder_path (Path): Path to the image folder
-    index (int): 1-based index of the file
-    
-    Returns:
-    str: Filename at the given index
-    """
-    # Get a sorted list of all image files
-    files = sorted([f.name for f in folder_path.glob("*.png")])
-    
-    # Return the filename at index-1 (convert from 1-based to 0-based)
-    # or fall back to sequential naming if index is out of range
-    if 0 < index <= len(files):
-        return files[index-1]
-    else:
-        return f"{index:03}.png"
-
 
 def extract_frames(*, video_path, output_folder):
     return run(
@@ -42,53 +21,90 @@ def extract_frames(*, video_path, output_folder):
         check=True,
     )
 
-
-def copy_frames(*, image_dir_path, output_folder):
-    """
-    Copy frames from a folder to another, extracting numbers from original filenames
-    and using those exact numbers for the new filenames.
+def copy_frames(*, image_dir_path, output_folder):    
+    # Create mapping dictionary
+    filename_map = OrderedDict()
     
-    Parameters:
-    image_dir_path (Path): Path to the folder with the images
-    output_folder (Path): Path to the folder where frames will be copied
-    
-    Raises:
-    ValueError: If any filename doesn't contain a number
-    """
-    
-    image_dir_path = Path(image_dir_path)
-    output_folder = Path(output_folder)
-    output_folder.mkdir(exist_ok=True, parents=True)
-        
+    i = 1
     patterns = ('*.png', '*.jpg', '*.jpeg')
+    
     image_files = []
     for pattern in patterns:
         image_files.extend(glob.iglob(os.path.join(str(image_dir_path), pattern)))
     
-    # Process each file
     for imgfile in sorted(image_files):
+        seq_name = f"{i:03}.png"
         original_name = os.path.basename(imgfile)
         
-        # Extract numbers from the filename
-        numbers = re.findall(r'\d+', original_name)
-        if numbers:
-            # Use the last group of numbers (often the frame number)
-            number = numbers[-1]
-            # Ensure it's a 3-digit format
-            new_name = f"{int(number):03}.png"
-            
-            # If already PNG, just copy, otherwise convert it
-            if imgfile.lower().endswith('.png'):
-                shutil.copy(imgfile, output_folder.joinpath(new_name))
-            else:
-                img = Image.open(imgfile)
-                img.save(output_folder.joinpath(new_name), "PNG")
+        # Save mapping between sequential and original names
+        filename_map[seq_name] = original_name
+        
+        # Use sequential numbering for processing
+        output_path = output_folder.joinpath(seq_name)
+        
+        # If already PNG, just copy, otherwise convert it
+        if imgfile.lower().endswith('.png'):
+            shutil.copy(imgfile, output_path)
         else:
-            # Raise an error if no numbers are found
-            raise ValueError(f"Error: No numbers found in filename: {original_name}. All filenames must contain numeric values.")
-                
+            img = Image.open(imgfile)
+            img.save(output_path, "PNG")
+        
+        i += 1
+    
+    # Save the mapping to a json file
+    mapping_path = output_folder.parent / "filename_map.json"
+    with mapping_path.open('w') as f:
+        json.dump(filename_map, f, indent=2)
+
     return
 
+def restore_original_filenames(*, output_folder, result_folder):
+    """
+    Restore original filenames in the output folder.
+    
+    Parameters:
+    output_folder (Path): Path to the output folder
+    result_folder (Path): Path to the temporary result folder
+    """
+    import json
+    import shutil
+    
+    output_folder = Path(output_folder)
+    result_folder = Path(result_folder)
+    
+    mapping_path = result_folder / "filename_map.json"
+    if not mapping_path.exists():
+        print("No filename mapping found, keeping sequential filenames")
+        return
+    
+    with mapping_path.open('r') as f:
+        filename_map = json.load(f)
+    
+    output_images_folder = output_folder / "images"
+    if not output_images_folder.exists():
+        print("No output images folder found")
+        return
+    
+    # Create a backup folder
+    backup_folder = output_folder / "images_sequential"
+    backup_folder.mkdir(exist_ok=True)
+    
+    # Copy files with original names
+    for seq_name, original_name in filename_map.items():
+        seq_path = output_images_folder / seq_name
+        if seq_path.exists():
+            # Make a backup
+            shutil.copy(seq_path, backup_folder / seq_name)
+            
+            # Create new file with original name
+            original_path = output_images_folder / original_name
+            if original_path.exists():
+                original_path.unlink()
+            shutil.copy(seq_path, original_path)
+            seq_path.unlink()  # Remove sequential file
+    
+    print(f"Restored original filenames in {output_images_folder}")
+    print(f"Backup of sequential files saved in {backup_folder}")
 
 def create_video(*, images_folder, output_path):
     return run(
