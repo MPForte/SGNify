@@ -60,7 +60,7 @@ def copy_frames(*, image_dir_path, output_folder):
 
 def restore_original_filenames(*, output_folder, result_folder):
     """
-    Restore original filenames in the output folder.
+    Restore original filenames and reorganize output files.
     
     Parameters:
     output_folder (Path): Path to the output folder
@@ -68,43 +68,71 @@ def restore_original_filenames(*, output_folder, result_folder):
     """
     import json
     import shutil
+    from pathlib import Path
     
     output_folder = Path(output_folder)
     result_folder = Path(result_folder)
     
+    # Filename mapping path
     mapping_path = result_folder / "filename_map.json"
+    
+    # Check if mapping file exists
     if not mapping_path.exists():
-        print("No filename mapping found, keeping sequential filenames")
+        print(f"No filename mapping found at {mapping_path}")
         return
     
+    # Read filename mapping
     with mapping_path.open('r') as f:
         filename_map = json.load(f)
     
-    output_images_folder = output_folder / "images"
-    if not output_images_folder.exists():
-        print("No output images folder found")
-        return
+    # Restore image filenames
+    images_folder = output_folder / "images"
+    if images_folder.exists():
+        for seq_name, original_name in filename_map.items():
+            seq_path = images_folder / seq_name
+            if seq_path.exists():
+                # Create path for original filename
+                original_path = images_folder / original_name
+                
+                # Remove original file if it exists
+                if original_path.exists():
+                    original_path.unlink()
+                
+                # Rename sequential file to original name
+                seq_path.rename(original_path)
+        
+        print(f"Restored original filenames in {images_folder}")
     
-    # Create a backup folder
-    backup_folder = output_folder / "images_sequential"
-    backup_folder.mkdir(exist_ok=True)
-    
-    # Copy files with original names
-    for seq_name, original_name in filename_map.items():
-        seq_path = output_images_folder / seq_name
-        if seq_path.exists():
-            # Make a backup
-            shutil.copy(seq_path, backup_folder / seq_name)
+    # Function to restore filenames for a specific folder and extension
+    def restore_folder_filenames(folder, extension):
+        if folder.exists():
+            # Create a mapping from sequential names to original names
+            reverse_map = {f"{int(k.split('.')[0]):03d}.{extension}": v for k, v in filename_map.items()}
             
-            # Create new file with original name
-            original_path = output_images_folder / original_name
-            if original_path.exists():
-                original_path.unlink()
-            shutil.copy(seq_path, original_path)
-            seq_path.unlink()  # Remove sequential file
+            files = sorted(folder.glob(f"*.{extension}"))
+            for file in files:
+                seq_name = file.name
+                if seq_name in reverse_map:
+                    original_name = reverse_map[seq_name]
+                    original_path = folder / original_name.replace('.jpg', '.' + extension)
+                    
+                    # Remove original file if it exists
+                    if original_path.exists():
+                        original_path.unlink()
+                    
+                    # Rename sequential file to original name
+                    file.rename(original_path)
+            
+            print(f"Restored original filenames in {folder}")
     
-    print(f"Restored original filenames in {output_images_folder}")
-    print(f"Backup of sequential files saved in {backup_folder}")
+    # Restore pkl and obj filenames
+    restore_folder_filenames(output_folder / "results", "pkl")
+    restore_folder_filenames(output_folder / "meshes", "obj")
+    
+    # Remove images_sequential folder if it exists
+    sequential_folder = output_folder / "images_sequential"
+    if sequential_folder.exists():
+        shutil.rmtree(sequential_folder)
 
 def create_video(*, images_folder, output_path):
     return run(
