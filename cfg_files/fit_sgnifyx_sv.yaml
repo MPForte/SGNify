@@ -15,7 +15,7 @@ model_type: 'smplx'
 use_cuda: True
 float_dtype: "float32"
 use_joints_conf: True
-use_pca: True
+use_pca: False
 use_hands: True
 use_face: True
 flat_hand_mean: False
@@ -26,7 +26,7 @@ left_hand_prior_type: l2
 right_hand_prior_type: l2
 jaw_prior_type: 'l2'
 focal_length: 5000
-num_pca_comps: 12
+# num_pca_comps: 12
 # The constant for the robust loss function
 rho: 100
 interpenetration: True

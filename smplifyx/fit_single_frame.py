@@ -152,14 +152,12 @@ def fit_single_frame(img,
         body_model.transl.requires_grad = False
 
         if use_hands:
-            left_hand_prev_pose = torch.einsum(
-                'bi,ij->bj', [torch.from_numpy(prev_body_model.get('left_hand_pose')).to(device), body_model.left_hand_components])
-            right_hand_prev_pose = torch.einsum(
-                'bi,ij->bj', [torch.from_numpy(prev_body_model.get('right_hand_pose')).to(device), body_model.right_hand_components])
+            left_hand_prev_pose = torch.from_numpy(prev_body_model.get('left_hand_pose')).to(device).reshape(1, -1)
+            right_hand_prev_pose = torch.from_numpy(prev_body_model.get('right_hand_pose')).to(device).reshape(1, -1)
             prev_pose.update({
                 "left_hand": left_hand_prev_pose,
                 "right_hand": right_hand_prev_pose
-            })    
+            })
     else:
         prev_pose = None
         beta_precomputed = kwargs.get('beta_precomputed', False)
@@ -197,15 +195,13 @@ def fit_single_frame(img,
             if right_handpose_path != 'None':
                 with open(right_handpose_path, 'rb') as pkl_f:
                     right_hand_ref = pickle.load(pkl_f).get('right_hand_pose')
-                right_hand_ref_aa = torch.einsum(
-                    'bi,ij->bj', [torch.from_numpy(right_hand_ref.astype(np.float32)).to(device), body_model.right_hand_components])
+                right_hand_ref_aa = torch.from_numpy(right_hand_ref.astype(np.float32)).to(device).reshape(1, -1)
 
             left_handpose_path = kwargs.get('left_handpose_path', 'None')
             if left_handpose_path != 'None':
                 with open(left_handpose_path, 'rb') as pkl_f:
                     left_hand_ref = pickle.load(pkl_f).get('left_hand_pose')
-                left_hand_ref_aa = torch.einsum(
-                    'bi,ij->bj', [torch.from_numpy(left_hand_ref.astype(np.float32)).to(device), body_model.left_hand_components])
+                left_hand_ref_aa = torch.from_numpy(left_hand_ref.astype(np.float32)).to(device).reshape(1, -1)
 
                 handshape_reference = {
                     "left_hand": left_hand_ref_aa,

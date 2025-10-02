@@ -43,10 +43,14 @@ def compute_sign_class(*, result_folder, openpose_folder, segment_path, sign_cla
         with base_folder.joinpath("ref_left_2.pkl").open("rb") as file:
             left_2 = pickle.load(file)["left_hand_pose"][0]
     except Exception:
-        right_1 = np.zeros((12,))
-        right_2 = np.zeros((12,))
-        left_1 = np.zeros((12,))
-        left_2 = np.zeros((12,))
+        # right_1 = np.zeros((12,))
+        # right_2 = np.zeros((12,))
+        # left_1 = np.zeros((12,))
+        # left_2 = np.zeros((12,))
+        right_1 = np.zeros((45,))
+        right_2 = np.zeros((45,))
+        left_1 = np.zeros((45,))
+        left_2 = np.zeros((45,))
 
     try:
         v3 = scipy.spatial.distance.cosine(right_1, left_1)

@@ -18,8 +18,8 @@ def create_obj(pkl_in, hand, avg_pca, out_path):
         data = pickle.load(file, encoding="latin1")
 
     del data["gender"]
-    data["right_hand_pose"] = np.zeros((1, 12))
-    data["left_hand_pose"] = np.zeros((1, 12))
+    data["right_hand_pose"] = np.zeros((1, 45))
+    data["left_hand_pose"] = np.zeros((1, 45))
     if avg_pca.shape:
         data[f"{hand}_hand_pose"] = avg_pca
     else:
@@ -52,7 +52,8 @@ def create_obj(pkl_in, hand, avg_pca, out_path):
         num_betas=300,
         dtype=dtype,
         model_type="smplx",
-        num_pca_comps=12,
+        use_pca=False #,
+        # num_pca_comps=45,
     )
 
     model = smplx.create(**model_params)
@@ -78,7 +79,7 @@ def average_handpose(pkl_paths, hand, mp_frames):
         weights.append(mp_frames[int(pkl_path.stem)])
 
     if len(hand_pca) == 0:
-        return np.zeros((1, 12), dtype=np.float32)
+        return np.zeros((1, 45), dtype=np.float32)
     return np.average(hand_pca, axis=0, weights=weights)
 
 
