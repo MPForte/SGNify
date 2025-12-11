@@ -10,7 +10,16 @@ password=$(urle $password)
 echo -e "\nDownloading SGNify..."
 wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=sgnify&resume=1&sfile=data.zip' -O 'data.zip' --continue
 
-conda env create -f environment.yml 
+# Auto-detect mamba or conda
+if command -v mamba &> /dev/null; then
+    echo "Using mamba for environment creation..."
+    CONDA_CMD="mamba"
+else
+    echo "Using conda for environment creation..."
+    CONDA_CMD="conda"
+fi
+
+$CONDA_CMD env create -f environment.yml 
 eval "$(conda shell.bash hook)"
 conda activate sgnify
 
